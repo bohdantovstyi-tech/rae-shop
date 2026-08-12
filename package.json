@@ -1,0 +1,15 @@
+{
+  "name": "webflow-connection-",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "parcel serve app.js --port 3001",
+    "build": "parcel build app.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "parcel": "^2.15.4"
+  }
+}
