@@ -8,14 +8,73 @@ window.Webflow.push(() => {
   // WayForPay (TEST)
   // const WFP_MERCHANT_ACCOUNT = "";
   // const WFP_MERCHANT_DOMAIN  = "";
-  const WFP_CURRENCY = "EUR";
+  const WFP_CURRENCY = "USD";
   const WFP_DEFAULT_PSP = "card";
   const WFP_PAYMENT_SYSTEMS = "card;googlePay;applePay";
   const WFP_DELIVERY_LIST = "nova;nova_pl;other";
 
   // Бекенд (Netlify Function), який рахує HMAC і викликає WayForPay offline
-  const CHECKOUT_ENDPOINT = "https://saule-backend.netlify.app/.netlify/functions/checkout";
+  const CHECKOUT_ENDPOINT = "";
+  //EXAMPLE: CHECKOUT_ENDPOINT = "https://saule-backend.netlify.app/.netlify/functions/checkout";
 
+  // ==============================
+  // СТОРІНКА ТОВАРУ
+  // ==============================
+  const materialInputs = document.querySelectorAll('input[name="product-material"]')
+  const colorInputs = document.querySelectorAll('input[name="product-color"]')
+
+  materialInputs.forEach((input, index) => {
+      input.addEventListener('change', () => {
+        const selectedMaterial = input.dataset.material;
+        console.log("Selected material:", selectedMaterial);
+
+        // Спільний контейнер продукту
+        const wrapper = input.closest('[data-item="product-wrapper"]');
+        if (!wrapper) {
+            console.warn('⚠️ Не знайдено картку продукту');
+            return;
+        }
+
+        const productEl = wrapper.querySelector('.product');
+        if (productEl) {
+            productEl.setAttribute('data-product-material', selectedMaterial);
+            console.log("✅ Встановлено в .product:", productEl.dataset.productMaterial);
+        } else {
+            console.warn('⚠️ Не знайдено .product всередині мерчу!');
+        }
+      });
+
+      if(index === 0){
+          input.checked = true;
+          input.dispatchEvent(new Event('change'));
+      }
+  });
+  colorInputs.forEach((input, index) => {
+    input.addEventListener('change', () => {
+      const selectedColor = input.dataset.color;
+      console.log("Selected color:", selectedColor);
+
+      // Спільний контейнер продукту
+      const wrapper = input.closest('[data-item="product-wrapper"]');
+      if (!wrapper) {
+          console.warn('⚠️ Не знайдено картку продукту');
+          return;
+      }
+
+      const productEl = wrapper.querySelector('.product');
+      if (productEl) {
+          productEl.setAttribute('data-product-color', selectedColor);
+          console.log("✅ Встановлено в .product:", productEl.dataset.productColor);
+      } else {
+          console.warn('⚠️ Не знайдено .product!');
+      }
+    });
+
+    if(index === 0){
+        input.checked = true;
+        input.dispatchEvent(new Event('change'));
+    }
+});
   // ==============================
   // КОШИК (localStorage)
   // ==============================
@@ -62,21 +121,26 @@ window.Webflow.push(() => {
 
     const rawSize = product.dataset.productSize;
     const size = !rawSize || rawSize === "undefined" || rawSize === "null" ? "" : rawSize;
+    const rawMaterial = product.dataset.productMaterial;
+    const material = !rawMaterial || rawMaterial === "undefined" || rawMaterial === "null" ? "" : rawMaterial;
+    const color = product.dataset.productColor;
 
     if (!rawName || Number.isNaN(price)) {
       console.warn("addToCart: відсутні name/price у data-* атрибутах", { rawName, rawPrice });
       return;
     }
 
-    const name = size ? `${rawName}, ${size}` : rawName;
+    // const variantParts = [size, material].filter(Boolean);
+    // const name = variantParts.length ? `${rawName}, ${variantParts.join(", ")}` : rawName;
+    const name = rawName
     const cart = getCartWithExpiry();
 
     const existing = cart.find(
-      (item) => item.rawName === rawName && item.price === price && item.size === size
+      (item) => item.rawName === rawName && item.price === price && item.size === size && item.material === material && item.color === color
     );
 
     if (existing) existing.cnt += 1;
-    else cart.push({ rawName, name, imgSrc, price, cnt: 1, productPageLink, size });
+    else cart.push({ rawName, name, imgSrc, price, cnt: 1, productPageLink, size, material, color });
 
     setCartWithExpiry(cart);
     renderCart();
@@ -90,9 +154,9 @@ window.Webflow.push(() => {
     if (btn.tagName === "A") e.preventDefault();
     addToCart(btn);
     // редірект на сторінку кошика після додавання
-    setTimeout(() => {
-      window.location.href = "https://www.saule-objects.com/cart";
-    }, 100);
+    // setTimeout(() => {
+    //   window.location.href = "https://www.saule-objects.com/cart";
+    // }, 100);
   });
 
   // Інкремент/декремент
