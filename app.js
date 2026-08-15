@@ -64,7 +64,9 @@ window.Webflow.push(() => {
       const productEl = wrapper.querySelector('.product');
       if (productEl) {
           productEl.setAttribute('data-product-color', selectedColor);
-          console.log("✅ Встановлено в .product:", productEl.dataset.productColor);
+          const sampleUrl = input.dataset.colorSample || "";
+          productEl.setAttribute('data-product-color-sample', sampleUrl);
+          console.log("✅ Встановлено в .product:", productEl.dataset.productColor, sampleUrl);
       } else {
           console.warn('⚠️ Не знайдено .product!');
       }
@@ -124,6 +126,7 @@ window.Webflow.push(() => {
     const rawMaterial = product.dataset.productMaterial;
     const material = !rawMaterial || rawMaterial === "undefined" || rawMaterial === "null" ? "" : rawMaterial;
     const color = product.dataset.productColor;
+    const colorSample = product.dataset.productColorSample;
 
     if (!rawName || Number.isNaN(price)) {
       console.warn("addToCart: відсутні name/price у data-* атрибутах", { rawName, rawPrice });
@@ -132,7 +135,7 @@ window.Webflow.push(() => {
 
     // const variantParts = [size, material].filter(Boolean);
     // const name = variantParts.length ? `${rawName}, ${variantParts.join(", ")}` : rawName;
-    const name = rawName
+    const name = rawName;
     const cart = getCartWithExpiry();
 
     const existing = cart.find(
@@ -140,7 +143,7 @@ window.Webflow.push(() => {
     );
 
     if (existing) existing.cnt += 1;
-    else cart.push({ rawName, name, imgSrc, price, cnt: 1, productPageLink, size, material, color });
+    else cart.push({ rawName, name, imgSrc, price, cnt: 1, productPageLink, size, material, color, colorSample });
 
     setCartWithExpiry(cart);
     renderCart();
@@ -240,31 +243,43 @@ window.Webflow.push(() => {
         const itemTotal = item.price * item.cnt;
         total += itemTotal;
 
+        const [height = "", radius = ""] = (item.size || "").split(/[xх]/i).map((s) => s.trim());
+
+        const materialBlock = item.material
+          ? `<div>|</div><div class="cart-product-material-wr flex-wrap"><div>${item.material}</div></div>`
+          : "";
+
         container.innerHTML += `
           <div class="summary-product" data-index="${index}">
             <a class="sum-image-wrap" href="${item.productPageLink}">
-              <div>
-                <img src="${item.imgSrc}" loading="lazy" alt="" class="product-min-image">
-              </div>
+              <img src="${item.imgSrc}" loading="lazy" alt="" class="product-min-image">
             </a>
             <div class="sum-info">
               <div class="sum-col">
                 <div class="sum-product-name">${item.name}</div>
-                <div class="flex-wrap">
-                  <span class="dollar">€</span>
-                  <p class="sum-price">${item.price}</p>
+                <div class="cart-product-info flex-wrap">
+                  <div class="flex-wrap">
+                    <div class="cart-product-color">
+                      <img src="${item.colorSample}" class="cart-product-img"/>
+                    </div>
+                    <div class="cart-product-size-wr flex-wrap">
+                      <div class="cart-product-height">${height}</div>
+                      <div class="cart-product-size-text">х</div>
+                      <div class="cart-product-radius">${radius}</div>
+                    </div>
+                    <div>CM</div>
+                  </div>
+                  ${materialBlock}
                 </div>
               </div>
               <div class="sum-col is-02">
                 <div class="flex-wrap">
-                  <p>Quantity:</p>
                   <div class="quantity-wrap">
-                    <div class="minus-btn"><p>-</p></div>
-                    <span class="quantity">${item.cnt}</span>
-                    <div class="plus-btn"><p>+</p></div>
+                    <div class="minus-btn"><div>-</div></div>
+                    <div class="quantity">${item.cnt}</div>
+                    <div class="plus-btn"><div>+</div></div>
                   </div>
                 </div>
-                <button type="button" class="remove-btn" aria-label="Remove from cart">Remove</button>
               </div>
             </div>
           </div>
@@ -281,7 +296,7 @@ window.Webflow.push(() => {
   function updateGlobalCartQuantity() {
     const cart = getCartWithExpiry();
     const totalItems = cart.reduce((sum, item) => sum + item.cnt, 0);
-    document.querySelectorAll(".cart-quantity").forEach((el) => {
+    document.querySelectorAll(".cart-total-quantity").forEach((el) => {
       el.textContent = totalItems;
     });
   }
