@@ -4,13 +4,17 @@
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "parcel serve app.js --port 3001",
-    "build": "parcel build app.js"
+    "start": "parcel serve public/app.js --port 3001",
+    "build": "parcel build public/app.js",
+    "dev": "netlify dev --live"
   },
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
     "parcel": "^2.15.4"
+  },
+  "devDependencies": {
+    "netlify-cli": "^27.1.1"
   }
 }
