@@ -121,8 +121,10 @@ window.Webflow.push(() => {
     const rawPrice = product.dataset.price || "";
     const price = parseInt(rawPrice.replace(/[^\d]/g, ""), 10);
 
-    const rawSize = product.dataset.productSize;
-    const size = !rawSize || rawSize === "undefined" || rawSize === "null" ? "" : rawSize;
+    const rawHeight = product.dataset.productHeight;
+    const height = !rawHeight || rawHeight === "undefined" || rawHeight === "null" ? "" : rawHeight;
+    const rawRadius = product.dataset.productRadius;
+    const radius = !rawRadius || rawRadius === "undefined" || rawRadius === "null" ? "" : rawRadius;
     const rawMaterial = product.dataset.productMaterial;
     const material = !rawMaterial || rawMaterial === "undefined" || rawMaterial === "null" ? "" : rawMaterial;
     const color = product.dataset.productColor;
@@ -139,11 +141,11 @@ window.Webflow.push(() => {
     const cart = getCartWithExpiry();
 
     const existing = cart.find(
-      (item) => item.rawName === rawName && item.price === price && item.size === size && item.material === material && item.color === color
+      (item) => item.rawName === rawName && item.price === price && item.height === height && item.radius === radius && item.material === material && item.color === color
     );
 
     if (existing) existing.cnt += 1;
-    else cart.push({ rawName, name, imgSrc, price, cnt: 1, productPageLink, size, material, color, colorSample });
+    else cart.push({ rawName, name, imgSrc, price, cnt: 1, productPageLink, height, radius, material, color, colorSample });
 
     setCartWithExpiry(cart);
     renderCart();
@@ -243,7 +245,8 @@ window.Webflow.push(() => {
         const itemTotal = item.price * item.cnt;
         total += itemTotal;
 
-        const [height = "", radius = ""] = (item.size || "").split(/[xх]/i).map((s) => s.trim());
+        const height = item.height || "";
+        const radius = item.radius || "";
 
         const materialBlock = item.material
           ? `<div>|</div><div class="cart-product-material-wr flex-wrap"><div>${item.material}</div></div>`
@@ -276,7 +279,11 @@ window.Webflow.push(() => {
                 <div class="flex-wrap">
                   <div class="quantity-wrap">
                     <div class="minus-btn"><div>-</div></div>
-                    <div class="quantity">${item.cnt}</div>
+                    <p class="cart-quantity-text">
+                      (
+                      <span class="quantity">${item.cnt}</span>
+                      )
+                    </p>
                     <div class="plus-btn"><div>+</div></div>
                   </div>
                 </div>
