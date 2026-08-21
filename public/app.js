@@ -424,12 +424,12 @@ window.Webflow.push(() => {
   const cartGlobalWrapper = document.getElementById('cart-global-el');
   const cartGlobalToggle = document.getElementById('cart-global-toggle-btn');
   const cartGlobalHolder = document.getElementById('cart-global-main');
-  const closeCartGlobalBtn = document.getElementById('cart-global-btn-close');
+  const closeCartGlobalBtn = document.querySelector('[data-cart-global-button="close"]')
   
   const cartToggleProductBtn = document.getElementById('cart-product-toggle-btn');
   const cartProductHolder = document.getElementById('cart-product-main');
-  const closeCartProductBtn = document.getElementById('cart-global-btn-close');
-  const cartTotalProductEl = document.getElementById('cart-product-total-el')
+  const closeCartProductBtn = document.querySelector('[data-cart-product-button="close"]')
+  const cartTotalProductEl = document.getElementById('cart-product-total-el');
   
 
   // Глобальний кошик: тогл + accessibility
@@ -441,6 +441,9 @@ window.Webflow.push(() => {
     cartGlobalToggle.addEventListener('click', function(){
       cartGlobalHolder.showModal();
       cartGlobalToggle.setAttribute('aria-expanded', 'true');
+      if (window.matchMedia('(max-width: 767px)').matches) {
+        document.documentElement.classList.add('no-scroll');
+      }
     });
 
     // Клік по backdrop <dialog> ставить e.target саме на сам діалог
@@ -450,10 +453,11 @@ window.Webflow.push(() => {
 
     cartGlobalHolder.addEventListener('close', function(){
       cartGlobalToggle.setAttribute('aria-expanded', 'false');
+      document.documentElement.classList.remove('no-scroll');
     });
 
     closeCartGlobalBtn?.addEventListener('click', function(){
-      cartGlobalHolder.click();
+      cartGlobalHolder.close();
     })
   }
 
@@ -466,6 +470,9 @@ window.Webflow.push(() => {
     cartToggleProductBtn.addEventListener('click', function () {
       cartProductHolder.showModal();
       cartToggleProductBtn.setAttribute('aria-expanded', 'true');
+      if (window.matchMedia('(max-width: 767px)').matches) {
+        document.documentElement.classList.add('no-scroll');
+      }
     });
 
     cartProductHolder.addEventListener('click', function (e) {
@@ -474,10 +481,11 @@ window.Webflow.push(() => {
 
     cartProductHolder.addEventListener('close', function () {
       cartToggleProductBtn.setAttribute('aria-expanded', 'false');
+      document.documentElement.classList.remove('no-scroll');
     });
 
     closeCartProductBtn?.addEventListener('click', function () {
-      cartProductHolder.click();
+      cartProductHolder.close();
     });
   }
 
