@@ -20,13 +20,44 @@ window.Webflow.push(() => {
   // ==============================
   // СТОРІНКА ТОВАРУ
   // ==============================
+  const isProductPage = !!document.querySelector('.product');
   const materialInputs = document.querySelectorAll('input[name="product-material"]')
   const colorInputs = document.querySelectorAll('input[name="product-color"]')
 
-  materialInputs.forEach((input, index) => {
+  if (isProductPage && materialInputs.length) {
+    materialInputs.forEach((input, index) => {
+        input.addEventListener('change', () => {
+          const selectedMaterial = input.dataset.material;
+          console.log("Selected material:", selectedMaterial);
+
+          // Спільний контейнер продукту
+          const wrapper = input.closest('[data-item="product-wrapper"]');
+          if (!wrapper) {
+              console.warn('⚠️ Не знайдено картку продукту');
+              return;
+          }
+
+          const productEl = wrapper.querySelector('.product');
+          if (productEl) {
+              productEl.setAttribute('data-product-material', selectedMaterial);
+              console.log("✅ Встановлено в .product:", productEl.dataset.productMaterial);
+          } else {
+              console.warn('⚠️ Не знайдено .product всередині мерчу!');
+          }
+        });
+
+        if(index === 0){
+            input.checked = true;
+            input.dispatchEvent(new Event('change'));
+        }
+    });
+  }
+
+  if (isProductPage && colorInputs.length) {
+    colorInputs.forEach((input, index) => {
       input.addEventListener('change', () => {
-        const selectedMaterial = input.dataset.material;
-        console.log("Selected material:", selectedMaterial);
+        const selectedColor = input.dataset.color;
+        console.log("Selected color:", selectedColor);
 
         // Спільний контейнер продукту
         const wrapper = input.closest('[data-item="product-wrapper"]');
@@ -37,10 +68,12 @@ window.Webflow.push(() => {
 
         const productEl = wrapper.querySelector('.product');
         if (productEl) {
-            productEl.setAttribute('data-product-material', selectedMaterial);
-            console.log("✅ Встановлено в .product:", productEl.dataset.productMaterial);
+            productEl.setAttribute('data-product-color', selectedColor);
+            const sampleUrl = input.dataset.colorSample || "";
+            productEl.setAttribute('data-product-color-sample', sampleUrl);
+            console.log("✅ Встановлено в .product:", productEl.dataset.productColor, sampleUrl);
         } else {
-            console.warn('⚠️ Не знайдено .product всередині мерчу!');
+            console.warn('⚠️ Не знайдено .product!');
         }
       });
 
@@ -48,35 +81,8 @@ window.Webflow.push(() => {
           input.checked = true;
           input.dispatchEvent(new Event('change'));
       }
-  });
-  colorInputs.forEach((input, index) => {
-    input.addEventListener('change', () => {
-      const selectedColor = input.dataset.color;
-      console.log("Selected color:", selectedColor);
-
-      // Спільний контейнер продукту
-      const wrapper = input.closest('[data-item="product-wrapper"]');
-      if (!wrapper) {
-          console.warn('⚠️ Не знайдено картку продукту');
-          return;
-      }
-
-      const productEl = wrapper.querySelector('.product');
-      if (productEl) {
-          productEl.setAttribute('data-product-color', selectedColor);
-          const sampleUrl = input.dataset.colorSample || "";
-          productEl.setAttribute('data-product-color-sample', sampleUrl);
-          console.log("✅ Встановлено в .product:", productEl.dataset.productColor, sampleUrl);
-      } else {
-          console.warn('⚠️ Не знайдено .product!');
-      }
     });
-
-    if(index === 0){
-        input.checked = true;
-        input.dispatchEvent(new Event('change'));
-    }
-});
+  }
   // ==============================
   // КОШИК (localStorage)
   // ==============================
@@ -168,6 +174,7 @@ window.Webflow.push(() => {
   document.addEventListener("click", (e) => {
     const plus = e.target.closest(".plus-btn");
     if (plus) {
+      e.stopPropagation();
       const wrap = plus.closest(".summary-product");
       const index = wrap ? Number(wrap.dataset.index) : -1;
       if (index >= 0) incrementItem(index);
@@ -175,6 +182,7 @@ window.Webflow.push(() => {
     }
     const minus = e.target.closest(".minus-btn");
     if (minus) {
+      e.stopPropagation();
       const wrap = minus.closest(".summary-product");
       const index = wrap ? Number(wrap.dataset.index) : -1;
       if (index >= 0) decrementItem(index);
@@ -215,6 +223,7 @@ window.Webflow.push(() => {
     const btn = e.target.closest(".remove-btn");
     if (!btn) return;
     e.preventDefault();
+    e.stopPropagation();
     const wrap = btn.closest(".summary-product");
     const index = wrap ? Number(wrap.dataset.index) : -1;
     if (index >= 0) removeFromCart(index);
@@ -403,6 +412,68 @@ window.Webflow.push(() => {
     document.body.appendChild(form);
     form.submit();
   }
+  // ==============================
+  // OPEN/CLOSE CART MODAL
+  // ==============================
+  const cartGlobalWrapper = document.getElementById('cart-global-el');
+  const cartGlobalToggle = document.getElementById('cart-global-toggle-btn');
+  const cartGlobalHolder = document.getElementById('cart-global-main');
+  const closeCartGlobalBtn = document.getElementById('cart-global-btn-close');
+  
+  const cartToggleProductBtn = document.getElementById('cart-product-toggle-btn');
+  const cartProductHolder = document.getElementById('cart-product-main');
+  const closeCartProductBtn = document.getElementById('cart-global-btn-close');
+  
+
+  // Глобальний кошик: тогл + accessibility
+  if (cartGlobalToggle && cartGlobalHolder) {
+    cartGlobalToggle.setAttribute('aria-controls', 'cart-global-main');
+    cartGlobalToggle.setAttribute('aria-expanded', 'false');
+    cartGlobalHolder.setAttribute('aria-label', 'Кошик');
+
+    cartGlobalToggle.addEventListener('click', function(){
+      cartGlobalHolder.showModal();
+      cartGlobalToggle.setAttribute('aria-expanded', 'true');
+    });
+
+    // Клік по backdrop <dialog> ставить e.target саме на сам діалог
+    cartGlobalHolder.addEventListener('click', function(e){
+      if (e.target === cartGlobalHolder) cartGlobalHolder.close();
+    });
+
+    cartGlobalHolder.addEventListener('close', function(){
+      cartGlobalToggle.setAttribute('aria-expanded', 'false');
+    });
+
+    closeCartGlobalBtn?.addEventListener('click', function(){
+      cartGlobalHolder.click();
+    })
+  }
+
+  // Кошик на сторінці товару: тогл + accessibility
+  if (cartToggleProductBtn && cartProductHolder) {
+    cartToggleProductBtn.setAttribute('aria-controls', 'cart-product-main');
+    cartToggleProductBtn.setAttribute('aria-expanded', 'false');
+    cartProductHolder.setAttribute('aria-label', 'Кошик');
+
+    cartToggleProductBtn.addEventListener('click', function () {
+      cartProductHolder.showModal();
+      cartToggleProductBtn.setAttribute('aria-expanded', 'true');
+    });
+
+    cartProductHolder.addEventListener('click', function (e) {
+      if (e.target === cartProductHolder) cartProductHolder.close();
+    });
+
+    cartProductHolder.addEventListener('close', function () {
+      cartToggleProductBtn.setAttribute('aria-expanded', 'false');
+    });
+
+    closeCartProductBtn?.addEventListener('click', function () {
+      cartProductHolder.click();
+    });
+  }
+
 
   // ==============================
   // ЧЕК-АУТ
