@@ -244,8 +244,8 @@ window.Webflow.push(() => {
     if (cart.length === 0) {
       container.innerHTML += `
         <div class="cart-inner-empty-wrap">
-          <p class="cart-inner-empty-text">Your cart is empty</p>
-          <a href="https://www.saule-objects.com" class="checkout-button-empty">Discover all products</a>
+          <p class="cart-inner-empty-text">Ваш кошик пустий</p>
+          <a href="https://rae-otsedesign.webflow.io" class="checkout-button-empty">Перейти до каталогу</a>
         </div>
       `;
       if (cartBottom) cartBottom.style.display = "none";
@@ -317,6 +317,9 @@ window.Webflow.push(() => {
     });
     if (cartGlobalWrapper) {
       cartGlobalWrapper.style.display = totalItems > 0 ? 'flex' : 'none';
+    }
+    if (cartTotalProductEl){
+      cartTotalProductEl.style.opacity = totalItems > 0 ? 1 : 0;
     }
   }
 
@@ -426,6 +429,7 @@ window.Webflow.push(() => {
   const cartToggleProductBtn = document.getElementById('cart-product-toggle-btn');
   const cartProductHolder = document.getElementById('cart-product-main');
   const closeCartProductBtn = document.getElementById('cart-global-btn-close');
+  const cartTotalProductEl = document.getElementById('cart-product-total-el')
   
 
   // Глобальний кошик: тогл + accessibility
