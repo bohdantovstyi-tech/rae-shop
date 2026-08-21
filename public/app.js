@@ -315,6 +315,9 @@ window.Webflow.push(() => {
     document.querySelectorAll(".cart-total-quantity").forEach((el) => {
       el.textContent = totalItems;
     });
+    if (cartGlobalWrapper) {
+      cartGlobalWrapper.style.display = totalItems > 0 ? 'flex' : 'none';
+    }
   }
 
   // ==============================
