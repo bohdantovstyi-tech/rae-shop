@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8" />
+  <title>Rae cart — local preview</title>
+  <style>
+    body { font-family: sans-serif; padding: 24px; max-width: 760px; margin: 0 auto; }
+    h2 { margin-top: 32px; }
+    [data-item="product-wrapper"] { border: 1px solid #ddd; padding: 16px; margin-bottom: 16px; }
+    .product { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+    .config-row { margin: 8px 0; display: flex; gap: 16px; flex-wrap: wrap; }
+    .summary-product { border-bottom: 1px solid #eee; padding: 8px 0; display: flex; gap: 12px; align-items: center; }
+    .product-min-image { max-width: 48px; }
+    .sum-info { display: flex; gap: 24px; align-items: center; flex: 1; justify-content: space-between; }
+    .flex-wrap { display: flex; gap: 6px; align-items: center; }
+    .quantity-wrap { display: inline-flex; gap: 10px; align-items: center; }
+    .minus-btn, .plus-btn { width: 24px; height: 24px; border: 1px solid #ccc; text-align: center; cursor: pointer; user-select: none; }
+    .remove-btn { cursor: pointer; color: #a00; }
+    .checkout-button { display: inline-block; margin-top: 16px; padding: 10px 20px; background: #111; color: #fff; cursor: pointer; }
+    .checkout-button.is-loading { opacity: .5; cursor: default; }
+    dialog { max-width: 560px; width: 100%; border: 1px solid #999; }
+    .cart-product-img { max-width: 20px; }
+  </style>
+</head>
+<body>
+  <h1>Rae — локальний харнес</h1>
+  <p>
+    Кошик:
+    <span id="cart-global-el">
+      <button id="cart-global-toggle-btn">Відкрити кошик (<span class="cart-total-quantity">0</span>)</button>
+    </span>
+    <button id="cart-product-toggle-btn">Кошик на сторінці товару</button>
+    <span id="cart-product-total-el"><span class="cart-total-quantity">0</span></span>
+  </p>
+
+  <h2>Каталог (тестові товари)</h2>
+
+  <!-- Товар з повним набором конфігурацій: матеріал, колір, розміри -->
+  <div data-item="product-wrapper">
+    <div class="config-row">
+      <label><input type="radio" name="product-material" data-material="Oak" /> Oak</label>
+      <label><input type="radio" name="product-material" data-material="Walnut" /> Walnut</label>
+    </div>
+    <div class="config-row">
+      <label><input type="radio" name="product-color" data-color="Black" data-color-sample="https://placehold.co/20x20/000000/000000.png" /> Black</label>
+      <label><input type="radio" name="product-color" data-color="Sand" data-color-sample="https://placehold.co/20x20/d9c8a9/d9c8a9.png" /> Sand</label>
+    </div>
+    <div class="product"
+         data-name="Aria"
+         data-price="1200"
+         data-img-src="https://placehold.co/48x48?text=Aria"
+         data-product-page="#aria"
+         data-product-height="45"
+         data-product-radius="60">
+      <span>Aria — 1200</span>
+      <a href="#" class="js-add-to-cart">Додати в кошик</a>
+    </div>
+  </div>
+
+  <!-- Товар без матеріалу й розмірів: перевіряє, що composeProductName пропускає порожні поля -->
+  <div data-item="product-wrapper">
+    <div class="product"
+         data-name="Nova"
+         data-price="800"
+         data-img-src="https://placehold.co/48x48?text=Nova"
+         data-product-page="#nova">
+      <span>Nova — 800 (без конфігурацій)</span>
+      <a href="#" class="js-add-to-cart">Додати в кошик</a>
+    </div>
+  </div>
+
+  <h2>Кошик</h2>
+  <div id="cart-container"></div>
+  <div class="cart-bottom">
+    <p>Разом: <span class="checkout-cost">0</span></p>
+    <a href="#" class="checkout-button">Оформити замовлення</a>
+  </div>
+
+  <!-- Модалка глобального кошика -->
+  <dialog id="cart-global-main">
+    <h3>Кошик (глобальний)</h3>
+    <p>Позиції рендеряться в #cart-container вище — ID у DOM має бути в однині,
+       див. DOM_HOOKS.md.</p>
+    <button data-cart-global-button="close">Закрити</button>
+  </dialog>
+
+  <!-- Модалка кошика на сторінці товару -->
+  <dialog id="cart-product-main">
+    <h3>Кошик (сторінка товару)</h3>
+    <button data-cart-product-button="close">Закрити</button>
+  </dialog>
+
+  <!-- Заглушка Webflow-рушія: на реальному сайті Webflow сам виконує чергу
+       window.Webflow.push(fn); тут її немає, тож виконуємо fn() одразу.
+       Має стояти ПЕРЕД підключенням app.js. -->
+  <script>
+    window.Webflow = { push: (fn) => fn() };
+    // Перевизначення бекенду лише для харнесу — у проді app.js бере свій дефолт.
+    // Для тесту callback підставити сюди URL тунелю netlify dev --live.
+    window.RAE_CHECKOUT_ENDPOINT = "http://localhost:8888/.netlify/functions/checkout";
+  </script>
+
+  <!-- Збірки немає — підключаємо public/app.js напряму -->
+  <script src="../public/app.js"></script>
+</body>
+</html>
