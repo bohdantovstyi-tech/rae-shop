@@ -1,20 +1,16 @@
 {
-  "name": "webflow-connection-",
+  "name": "rae-shop",
   "version": "1.0.0",
   "type": "module",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "parcel serve public/app.js --port 3001",
-    "build": "parcel build public/app.js",
-    "dev": "netlify dev --live"
-  },
+  "description": "Custom cart & checkout logic for the Rae Webflow site (WayForPay payments, Brevo email notifications via Netlify Functions).",
   "author": "",
   "license": "ISC",
-  "description": "",
-  "dependencies": {
-    "parcel": "^2.15.4"
+  "scripts": {
+    "test": "vitest run",
+    "dev": "bash scripts/dev.sh"
   },
   "devDependencies": {
-    "netlify-cli": "^27.1.1"
+    "netlify-cli": "^27.1.1",
+    "vitest": "^3.2.7"
   }
 }

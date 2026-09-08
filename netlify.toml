@@ -1,18 +1,8 @@
-# example netlify.toml
 [build]
-  command = "# no build command"
-  functions = "netlify/functions"
   publish = "public"
-
-  ## Uncomment to use this redirect for Single Page Applications like create-react-app.
-  ## Not needed for static site generators.
-  #[[redirects]]
-  #  from = "/*"
-  #  to = "/index.html"
-  #  status = 200
-
-  ## more info on configuring this file: https://ntl.fyi/file-based-build-config
+  functions = "netlify/functions"
 
 [dev]
   framework = "#static"
   publish = "public"
+  functions = "netlify/functions"
