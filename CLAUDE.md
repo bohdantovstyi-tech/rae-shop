@@ -155,4 +155,29 @@ Push у `main` на GitHub → Netlify деплоїть і статику (`publ
 
 ## Відкриті питання / TODO
 
-Заповнюється у макро-пункті 10 плану.
+- [ ] **Захист від підміни ціни товару** — `validate-wfp.js` звіряє лише внутрішню
+  узгодженість payload, серверного джерела правди по цінах немає. Деталі й варіант
+  рішення — [`PROD_CHECKLIST.md`](./PROD_CHECKLIST.md), розділ 5.
+  **Обов'язково закрити перед продом з реальними платежами**
+- [ ] **Доступ до Netlify-сайту `rae-shop`** — залогінений акаунт `netlify-cli`
+  (`hello@htotse.com`, команда «Hto tse?») цього сайту не бачить, хоча локальний
+  `.netlify/state.json` на нього прив'язаний. Через це `netlify dev --live` не
+  запускається (`Failed retrieving addons for site ...: Not Found`), тунелю немає, і
+  наскрізний тест callback від WayForPay локально неможливий. Локально працює лише
+  `netlify dev --offline`. Потрібен логін в акаунт-власник сайту
+- [ ] **Точний домен Webflow-сайту Rae** для `WFP_MERCHANT_DOMAIN` і `CORS_ALLOWED_ORIGIN`
+  (у порожньому кошику `public/app.js` посилається на `https://rae-otsedesign.webflow.io`,
+  але як фінальний домен це не підтверджено)
+- [ ] **`CART_PAGE_URL` у `public/app.js`** — зараз `""`, тож редірект на сторінку кошика
+  після додавання товару вимкнений. Це свідоме рішення (у Rae кошик у модалках),
+  переглянути, якщо поведінку захочуть змінити
+- [ ] **Валюта** — `WFP_CURRENCY = "USD"` у `public/app.js`, `ALLOWED_CURRENCIES` у
+  `validate-wfp.js` — усі три (`UAH`, `USD`, `EUR`). Sandbox приймає будь-яку з них на
+  етапі створення платіжного URL, тож питання вирішує лише кабінет реального мерчанта.
+  Після підтвердження — звузити `ALLOWED_CURRENCIES` до фактично увімкнених
+- [ ] **Brevo-змінні** (`BREVO_API_KEY`, `BREVO_ORDER_CONFIRMATION_TEMPLATE_ID`,
+  `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME`) — ще не отримані. Поки їх немає, лист просто
+  не надсилається: помилка логується, ACK для WFP усе одно повертається
+- [ ] **Темплейт «Order confirmation» у Brevo** — створити з merge-тегами `orderNumber`,
+  `orderDate`, `recipientName`, `phone`, `products`, `total`. Без `deliveryAddress` і без
+  блоків наявності/передзамовлення. `products` приходить готовим рядком, не масивом
