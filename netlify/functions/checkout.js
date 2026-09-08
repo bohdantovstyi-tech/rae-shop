@@ -1,11 +1,13 @@
 // Netlify Function: WayForPay Purchase (offline-first — fallback to form POST)
 // Важливо: merchantAccount / merchantDomainName / secret беремо лише з ENV!
 
-import crypto from "crypto";
+import { validateWfpPayload } from "./utils/validate-wfp.js";
+import { buildPurchaseBaseString, hmacMd5Hex, resolveWfpSecret } from "./utils/wfp-signature.js";
 
 export async function handler(event) {
+  const allowOrigin = process.env.CORS_ALLOWED_ORIGIN || "*";
   const cors = {
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": allowOrigin,
     "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
   };
@@ -31,13 +33,14 @@ export async function handler(event) {
     // ---- серверні секретовані значення з ENV
     const MERCHANT_ACCOUNT = process.env.WFP_MERCHANT_ACCOUNT;
     const MERCHANT_DOMAIN  = process.env.WFP_MERCHANT_DOMAIN;
-    const SECRET           = process.env.WFP_SECRET_KEY;
+    // Той самий перемикач live/test, що й у wfp-callback.js — інакше підписи розійдуться
+    const SECRET = resolveWfpSecret();
 
     if (!MERCHANT_ACCOUNT || !MERCHANT_DOMAIN || !SECRET) {
       return {
         statusCode: 500,
         headers: cors,
-        body: JSON.stringify({ error: "Missing env vars: WFP_MERCHANT_ACCOUNT / WFP_MERCHANT_DOMAIN / WFP_SECRET_KEY" })
+        body: JSON.stringify({ error: "Missing env vars: WFP_MERCHANT_ACCOUNT / WFP_MERCHANT_DOMAIN / WFP_SECRET_KEY (or WFP_TEST_SECRET_KEY)" })
       };
     }
 
@@ -70,6 +73,16 @@ export async function handler(event) {
       };
     }
 
+    // ---- Типи/діапазони + узгодженість amount із productPrice/productCount
+    const validationErrors = validateWfpPayload(wfp);
+    if (validationErrors.length > 0) {
+      return {
+        statusCode: 400,
+        headers: cors,
+        body: JSON.stringify({ error: "Invalid payload", details: validationErrors }),
+      };
+    }
+
     // ---- Серверний baseline полів (перезаписуємо потенційно клієнтські значення)
     const baseFields = {
       merchantAccount: MERCHANT_ACCOUNT,
@@ -77,7 +90,7 @@ export async function handler(event) {
       merchantDomainName: MERCHANT_DOMAIN,
       merchantTransactionType: wfp.merchantTransactionType || "AUTO",
       merchantTransactionSecureType: wfp.merchantTransactionSecureType || "AUTO",
-      apiVersion: wfp.apiVersion || "2",
+      apiVersion: wfp.apiVersion || "1",
       language: wfp.language || "EN",
       defaultPaymentSystem: wfp.defaultPaymentSystem || "card",
 
@@ -85,33 +98,26 @@ export async function handler(event) {
       orderReference: String(wfp.orderReference),
       orderDate: String(wfp.orderDate), // UNIX seconds
       amount: String(wfp.amount),       // "N.NN"
-      currency: String(wfp.currency),   // "UAH" | "EUR" | інше, якщо ввімкнено
+      currency: String(wfp.currency),   // "UAH" | "USD" | "EUR", якщо ввімкнено в кабінеті
     };
 
-    // ---- Підпис (HMAC_MD5) згідно з докою:
-    // merchantAccount;merchantDomainName;orderReference;orderDate;amount;currency; productName[];productCount[];productPrice[]
-    const baseParts = [
-      String(baseFields.merchantAccount),
-      String(baseFields.merchantDomainName),
-      String(baseFields.orderReference),
-      String(baseFields.orderDate),
-      String(baseFields.amount),
-      String(baseFields.currency),
-      ...wfp.productName.map(String),
-      ...wfp.productCount.map(String),
-      ...wfp.productPrice.map(String),
-    ];
-    const baseString = baseParts.join(";");
+    // ---- Підпис (HMAC_MD5). serviceUrl/returnUrl у нього НЕ входять.
+    const baseString = buildPurchaseBaseString({
+      merchantAccount: baseFields.merchantAccount,
+      merchantDomainName: baseFields.merchantDomainName,
+      orderReference: baseFields.orderReference,
+      orderDate: baseFields.orderDate,
+      amount: baseFields.amount,
+      currency: baseFields.currency,
+      productName: wfp.productName,
+      productCount: wfp.productCount,
+      productPrice: wfp.productPrice,
+    });
 
-    const merchantSignature = crypto
-      .createHmac("md5", SECRET)
-      .update(baseString, "utf8")
-      .digest("hex");
+    const merchantSignature = hmacMd5Hex(baseString, SECRET);
 
     // ---- Прокидаємо додаткові поля (опціональні)
     const passthrough = [
-      "returnUrl",
-      "serviceUrl",
       "paymentSystems",
       "deliveryList",
       "clientFirstName",
@@ -135,7 +141,14 @@ export async function handler(event) {
       if (wfp[k] != null && wfp[k] !== "") optionalFields[k] = String(wfp[k]);
     }
 
-    // ---- Фінальний payload для запису
+    // ---- serviceUrl / returnUrl: env має пріоритет над клієнтом.
+    // Клієнт не повинен мати змоги перенаправити callback про оплату на свій сервер.
+    const serviceUrl = process.env.WFP_SERVICE_URL || wfp.serviceUrl || "";
+    const returnUrl  = process.env.WFP_RETURN_URL  || wfp.returnUrl  || "";
+    if (serviceUrl) optionalFields.serviceUrl = String(serviceUrl);
+    if (returnUrl) optionalFields.returnUrl = String(returnUrl);
+
+    // ---- Фінальний payload для запиту
     const payload = {
       ...baseFields,
       merchantSignature,
@@ -176,7 +189,7 @@ export async function handler(event) {
       };
     }
 
-    // ---- Fallback: тіло відправити звичайну форму POST на платіжну сторінку
+    // ---- Fallback: фронт відправить звичайну форму POST на платіжну сторінку
     const fieldsForForm = {
       ...payload,
       ...optionalFields,
