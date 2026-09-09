@@ -12,7 +12,7 @@
     "packageJson": {
       "dependencies": [
         "npm:netlify-cli@^27.1.1",
-        "npm:parcel@^2.15.4"
+        "npm:vitest@^3.2.7"
       ]
     }
   }

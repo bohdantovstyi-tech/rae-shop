@@ -5,17 +5,27 @@ window.Webflow ||= [];
 window.Webflow.push(() => {
   const ENABLE_AUTO_REDIRECT = true;
 
-  // WayForPay (TEST)
-  // const WFP_MERCHANT_ACCOUNT = "";
-  // const WFP_MERCHANT_DOMAIN  = "";
+  // WayForPay. merchantAccount/merchantDomain/секрет живуть лише на бекенді —
+  // тут їх немає й бути не повинно.
+  // TODO: валюта не підтверджена. Sandbox приймає UAH/USD/EUR на етапі створення
+  // платіжного URL, тож питання вирішує лише кабінет реального мерчанта Rae.
+  // Якщо там увімкнено тільки UAH — змінити тут і звузити ALLOWED_CURRENCIES
+  // у netlify/functions/utils/validate-wfp.js.
   const WFP_CURRENCY = "USD";
   const WFP_DEFAULT_PSP = "card";
   const WFP_PAYMENT_SYSTEMS = "card;googlePay;applePay";
   const WFP_DELIVERY_LIST = "nova;nova_pl;other";
 
-  // Бекенд (Netlify Function), який рахує HMAC і викликає WayForPay offline
-  const CHECKOUT_ENDPOINT = "";
-  //EXAMPLE: CHECKOUT_ENDPOINT = "https://saule-backend.netlify.app/.netlify/functions/checkout";
+  // Бекенд (Netlify Function), який рахує HMAC і викликає WayForPay offline.
+  // Збірки немає, тож підставити значення на етапі build нікому — це константа.
+  // window.RAE_CHECKOUT_ENDPOINT виставляється ЛИШЕ в test/local-preview.html,
+  // щоб можна було перемкнути на localhost/тунель без правки цього файлу.
+  const CHECKOUT_ENDPOINT =
+    window.RAE_CHECKOUT_ENDPOINT || "https://rae-shop.netlify.app/.netlify/functions/checkout";
+
+  // Сторінка кошика на Webflow-сайті. Порожньо = редірект після додавання вимкнено.
+  // TODO: заповнити фінальним URL перед продом (див. PROD_CHECKLIST.md, розділ 2).
+  const CART_PAGE_URL = "";
 
   // ==============================
   // СТОРІНКА ТОВАРУ
@@ -164,10 +174,12 @@ window.Webflow.push(() => {
     if (!btn) return;
     if (btn.tagName === "A") e.preventDefault();
     addToCart(btn);
-    // редірект на сторінку кошика після додавання
-    // setTimeout(() => {
-    //   window.location.href = "https://www.saule-objects.com/cart";
-    // }, 100);
+    // Редірект на сторінку кошика після додавання — лише якщо URL заданий
+    if (CART_PAGE_URL) {
+      setTimeout(() => {
+        window.location.href = CART_PAGE_URL;
+      }, 100);
+    }
   });
 
   // Інкремент/декремент
@@ -332,6 +344,17 @@ window.Webflow.push(() => {
     return n.toFixed(2);
   }
 
+  // Вшиває конфігурації товару (матеріал, колір, розміри) у назву позиції.
+  // Це головна відмінність Rae від Punkt: WFP не має окремих полів під варіанти,
+  // тож усе, що покупець обрав, має потрапити в productName одним рядком.
+  // Рядок іде в HMAC-підпис, тому на беку його НЕ можна додатково трансформувати.
+  function composeProductName(item) {
+    const size = item.height && item.radius ? `${item.height}x${item.radius} CM` : "";
+    const parts = [item.name, item.material, item.color, size].filter(Boolean);
+    // WFP має ліміт довжини назви товару — підстраховуємось обрізанням
+    return parts.join(", ").slice(0, 255);
+  }
+
   function mapCartToWfpArrays(cart) {
     // однаковий порядок для всіх масивів — критично для підпису
     const productName = [];
@@ -339,7 +362,7 @@ window.Webflow.push(() => {
     const productCount = [];
 
     cart.forEach((item) => {
-      productName.push(item.name);
+      productName.push(composeProductName(item));
       productPrice.push(toMoney(item.price));
       productCount.push(String(item.cnt));
     });
@@ -347,7 +370,7 @@ window.Webflow.push(() => {
     return { productName, productPrice, productCount };
   }
 
-  function makeOrderReference(prefix = "SAULE") {
+  function makeOrderReference(prefix = "RAE") {
     return `${prefix}_${Date.now()}`;
   }
 
@@ -361,15 +384,13 @@ window.Webflow.push(() => {
 
     // формуємо payload без підпису — бек його порахує
     const wfp = {
-      // merchantAccount: WFP_MERCHANT_ACCOUNT,
-      // merchantDomainName: WFP_MERCHANT_DOMAIN,
       merchantAuthType: "SimpleSignature",
       merchantTransactionType: "AUTO",
       merchantTransactionSecureType: "AUTO",
       apiVersion: "1",
       language: "EN",
 
-      orderReference: makeOrderReference("SAULE"),
+      orderReference: makeOrderReference("RAE"),
       orderDate: unixSeconds(),
       amount: toMoney(total),
       currency: WFP_CURRENCY,
@@ -383,9 +404,8 @@ window.Webflow.push(() => {
       paymentSystems: WFP_PAYMENT_SYSTEMS,
       deliveryList: WFP_DELIVERY_LIST,
 
-      // (пізніше додамо)
-      // returnUrl: "https://www.saule-objects.com/payment-success",
-      // serviceUrl: "https://saule-backend.netlify.app/.netlify/functions/wfp-callback",
+      // returnUrl і serviceUrl підставляє бекенд з env — клієнт їх не шле,
+      // щоб не мати змоги перенаправити callback про оплату на свій сервер
     };
 
     return wfp;
@@ -493,60 +513,107 @@ window.Webflow.push(() => {
   // ==============================
   // ЧЕК-АУТ
   // ==============================
-  function submitOrder() {
+
+  // fetch з повторними спробами (exponential backoff) для тимчасових мережевих збоїв.
+  // 4xx НЕ ретраяться — це помилки самого запиту, повтор дасть той самий результат.
+  async function fetchWithRetry(url, options, { retries = 2, baseDelayMs = 800 } = {}) {
+    let lastError;
+
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const res = await fetch(url, options);
+        if (res.ok || (res.status >= 400 && res.status < 500)) {
+          return res;
+        }
+        lastError = new Error(`HTTP ${res.status}`);
+      } catch (err) {
+        lastError = err;
+      }
+
+      if (attempt < retries) {
+        const delay = baseDelayMs * 2 ** attempt;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+
+    throw lastError;
+  }
+
+  // .checkout-button у Webflow — зазвичай <a> або <div>, а не <button>, тож
+  // властивість disabled на ньому не працює. Стан блокування тримаємо в aria-disabled.
+  function setCheckoutButtonLoading(btn, isLoading) {
+    if (isLoading) {
+      btn.dataset.originalText = btn.textContent;
+      btn.textContent = "Обробка...";
+      btn.setAttribute("aria-disabled", "true");
+      btn.classList.add("is-loading");
+      if (btn.tagName === "BUTTON") btn.disabled = true;
+    } else {
+      btn.textContent = btn.dataset.originalText || btn.textContent;
+      btn.removeAttribute("aria-disabled");
+      btn.classList.remove("is-loading");
+      if (btn.tagName === "BUTTON") btn.disabled = false;
+    }
+  }
+
+  async function submitOrder(btn) {
     const cart = getCartWithExpiry();
     if (cart.length === 0) {
       alert("Ваш кошик порожній!");
+      setCheckoutButtonLoading(btn, false);
       return;
     }
 
     const wfpPayload = buildWfpPayload(cart);
 
-    fetch(CHECKOUT_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        provider: "wayforpay",
-        wfp: wfpPayload, // бек рахує merchantSignature та викликає offline
-      }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        console.log("Відповідь з Netlify (checkout):", data);
-
-        // A) Offline-режим — отримали URL для оплати
-        if (data && data.mode === "offline" && data.payUrl) {
-          console.log("payUrl:", data.payUrl);
-          if (ENABLE_AUTO_REDIRECT) {
-            window.location.href = data.payUrl; // редірект на платіжну сторінку
-          }
-          return;
-        }
-
-        // B) Fallback — бек повернув поля для стандартного HTML POST
-        if (data && data.mode === "form" && data.wfp?.actionUrl && data.wfp?.fields) {
-          console.log("Fallback to form POST:", data.wfp);
-          if (ENABLE_AUTO_REDIRECT) {
-            postViaForm(data.wfp.actionUrl, data.wfp.fields);
-          }
-          return;
-        }
-
-        console.error("Не отримано даних для оплати WayForPay:", data);
-        alert("Не вдалося ініціювати оплату. Спробуйте ще раз.");
-      })
-      .catch((err) => {
-        console.error("Помилка оформлення замовлення (WayForPay):", err);
-        alert("Не вдалося створити замовлення. Спробуйте ще раз.");
+    try {
+      const res = await fetchWithRetry(CHECKOUT_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "wayforpay",
+          wfp: wfpPayload, // бек рахує merchantSignature та викликає offline
+        }),
       });
+      const data = await res.json();
+      console.log("Відповідь з Netlify (checkout):", data);
+
+      // A) Offline-режим — отримали URL для оплати
+      if (data && data.mode === "offline" && data.payUrl) {
+        console.log("payUrl:", data.payUrl);
+        if (ENABLE_AUTO_REDIRECT) {
+          window.location.href = data.payUrl; // редірект на платіжну сторінку
+        }
+        return;
+      }
+
+      // B) Fallback — бек повернув поля для стандартного HTML POST
+      if (data && data.mode === "form" && data.wfp?.actionUrl && data.wfp?.fields) {
+        console.log("Fallback to form POST:", data.wfp);
+        if (ENABLE_AUTO_REDIRECT) {
+          postViaForm(data.wfp.actionUrl, data.wfp.fields);
+        }
+        return;
+      }
+
+      console.error("Не отримано даних для оплати WayForPay:", data);
+      alert("Не вдалося ініціювати оплату. Спробуйте ще раз.");
+      setCheckoutButtonLoading(btn, false);
+    } catch (err) {
+      console.error("Помилка оформлення замовлення (WayForPay):", err);
+      alert("Не вдалося створити замовлення. Спробуйте ще раз.");
+      setCheckoutButtonLoading(btn, false);
+    }
   }
 
-  // Клік по кнопці оформлення замовлення
+  // Клік по кнопці оформлення замовлення.
+  // aria-disabled — і індикатор стану, і захист від подвійного сабміту.
   document.addEventListener("click", (e) => {
     const btn = e.target.closest(".checkout-button");
-    if (!btn) return;
+    if (!btn || btn.getAttribute("aria-disabled") === "true") return;
     e.preventDefault();
-    submitOrder();
+    setCheckoutButtonLoading(btn, true);
+    submitOrder(btn);
   });
 
   // Ініціалізація

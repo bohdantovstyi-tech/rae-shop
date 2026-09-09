@@ -1,22 +1,27 @@
-// netlify/functions/callback.js
+// netlify/functions/wfp-callback.js
 // WayForPay — serviceUrl callback handler (Netlify Functions)
 // 1) Приймає POST від WFP (JSON / x-www-form-urlencoded / text/plain)
 // 2) Перевіряє підпис (HMAC-MD5) callback-а
 // 3) Відповідає WFP JSON'ом {orderReference, status:"accept", time, signature}
-// 4) Форвардить нормалізований JSON у Make
+// 4) Після успішної оплати — відправка email-підтвердження через Brevo
+// 5) Опційно форвардить нормалізований payload у зовнішню автоматизацію (Make.com)
 
-import crypto from "crypto";
+import { sendOrderConfirmationEmail } from "./utils/brevo.js";
+import {
+  buildAckBaseString,
+  buildCallbackBaseString,
+  hmacMd5Hex,
+  resolveWfpSecret,
+} from "./utils/wfp-signature.js";
 
-// ---- Увімкнути короткий дебаг-лог (true/false або через ENV DEBUG_WFP_CALLBACK=1)
-const DEBUG = true;
-
-// HMAC-MD5 — hex
-function hmacMd5Hex(message, secret) {
-  return crypto.createHmac("md5", secret).update(message, "utf8").digest("hex");
-}
+// Дебаг-лог вмикається лише явно через ENV DEBUG_WFP_CALLBACK=1
+const DEBUG = process.env.DEBUG_WFP_CALLBACK === "1";
 
 // Безпечний String
 const s = (v) => (v == null ? "" : String(v));
+
+// WFP інколи присилає productName/productCount/productPrice як масив, інколи як одне значення
+const toArray = (v) => (Array.isArray(v) ? v : v != null && v !== "" ? [v] : []);
 
 // Надійне читання тіла з підтримкою base64 та "кривих" content-type
 async function readBodyFlexible(event) {
@@ -83,7 +88,6 @@ async function readBodyFlexible(event) {
     return {};
   }
 
-
 export async function handler(event) {
   const cors = {
     "Access-Control-Allow-Origin": "*",
@@ -113,14 +117,14 @@ export async function handler(event) {
     console.log("WFP callback raw (safe):", JSON.stringify(safeLog).slice(0, 2000));
   }
 
-  // 2) Секрет
-  const SECRET = process.env.WFP_TEST_SECRET_KEY;
+  // 2) Секрет — той самий live/test перемикач, що й у checkout.js
+  const SECRET = resolveWfpSecret();
 
   if (!SECRET) {
     console.error("Missing WFP secret env var");
   }
 
-  // 3) Дістанемо поля
+  // 3) Дістаємо поля
   const merchantAccount   = s(data.merchantAccount);
   const orderReference    = s(data.orderReference);
   const amount            = s(data.amount);
@@ -133,21 +137,12 @@ export async function handler(event) {
   // Підпис від WFP — інколи приходить як "merchantSignature", інколи як "signature"
   const merchantSignature = s(data.merchantSignature || data.signature);
 
-  // 4) Перевірка підпису вхідного callback (Purchase/serviceUrl):
+  // 4) Перевірка підпису вхідного callback (Purchase/serviceUrl).
+  // Невідповідність логується, але запит не відхиляється — ACK усе одно повертається,
+  // інакше WFP ретраїтиме колбек.
   let isSignatureValid = false;
   if (SECRET) {
-    const message = [
-      merchantAccount,
-      orderReference,
-      amount,
-      currency,
-      authCode,
-      cardPan,
-      transactionStatus,
-      reasonCode,
-    ].join(";");
-
-    const calcSig = hmacMd5Hex(message, SECRET);
+    const calcSig = hmacMd5Hex(buildCallbackBaseString(data), SECRET);
     isSignatureValid = calcSig === merchantSignature;
 
     if (!isSignatureValid) {
@@ -164,7 +159,7 @@ export async function handler(event) {
   const time = Math.floor(Date.now() / 1000);
   let responseSignature = "no-secret";
   if (SECRET) {
-    responseSignature = hmacMd5Hex([orderReference, status, String(time)].join(";"), SECRET);
+    responseSignature = hmacMd5Hex(buildAckBaseString(orderReference, status, time), SECRET);
   }
 
   const ackBody = {
@@ -174,63 +169,97 @@ export async function handler(event) {
     signature: responseSignature,
   };
 
-  // 6) Готуємо зручний payload у Make
-  const makeUrl = "https://hook.eu2.make.com/hg21lumw8yycmc3g7bm1tq35fnidj8e9";
-
   const success = transactionStatus === "Approved";
 
-  const forwardPayload = {
-    provider: "wayforpay",
-    ok: success && isSignatureValid,
-    signatureValid: isSignatureValid,
-    // ключові поля
-    merchantAccount,
-    orderReference,
-    amount,
-    currency,
-    transactionStatus,
-    reason: s(data.reason),
-    reasonCode,
-    // карткові
-    authCode,
-    cardPan,
-    cardType: s(data.cardType),
-    issuerBankCountry: s(data.issuerBankCountry),
-    issuerBankName: s(data.issuerBankName),
-    // дати
-    createdDate: s(data.createdDate),
-    processingDate: s(data.processingDate),
-    settlementDate: s(data.settlementDate),
-    // клієнт
-    clientFirstName: s(data.clientFirstName),
-    clientLastName: s(data.clientLastName),
-    clientEmail: s(data.email || data.clientEmail),
-    clientPhone: s(data.phone || data.clientPhone),
-    // товари
-    productName: Array.isArray(data.productName) ? data.productName : (data.productName ? [data.productName] : []),
-    productCount: Array.isArray(data.productCount) ? data.productCount : (data.productCount ? [data.productCount] : []),
-    productPrice: Array.isArray(data.productPrice) ? data.productPrice : (data.productPrice ? [data.productPrice] : []),
-    // доставка/мультивалюта
-    deliveryList: s(data.deliveryList),
-    alternativeCurrency: s(data.alternativeCurrency),
-    alternativeAmount: s(data.alternativeAmount),
-    // сирий payload для дебагу
-    raw: data,
-  };
+  // 6) Email-підтвердження замовлення через Brevo — не має блокувати ACK-відповідь WFP
+  if (success && isSignatureValid) {
+    const customerEmail = s(data.email || data.clientEmail);
+    const customerName = [s(data.clientFirstName), s(data.clientLastName)].filter(Boolean).join(" ");
+    const customerPhone = s(data.phone || data.clientPhone);
 
-  // 7) Форвардимо у Make (але не блокуємо ACK WFP, якщо Make впаде)
-  try {
-    if (makeUrl) {
+    if (customerEmail) {
+      const productNames = toArray(data.productName);
+      const productCounts = toArray(data.productCount);
+      const productPrices = toArray(data.productPrice);
+      const items = productNames.map((name, i) => ({
+        name,
+        count: productCounts[i],
+        price: productPrices[i],
+      }));
+
+      try {
+        await sendOrderConfirmationEmail({
+          to: customerEmail,
+          recipientName: customerName,
+          phone: customerPhone,
+          orderReference,
+          createdDate: data.createdDate,
+          amount,
+          currency,
+          items,
+        });
+      } catch (e) {
+        console.error("Brevo order confirmation email failed:", e);
+      }
+    } else {
+      console.warn("WFP callback: no customer email in payload, skipping Brevo confirmation", { orderReference });
+    }
+  }
+
+  // 7) Опційний форвард нормалізованого payload у зовнішню автоматизацію (Make.com тощо).
+  // Вимкнено за замовчуванням — активується лише якщо задано MAKE_WEBHOOK_URL в ENV.
+  const makeUrl = process.env.MAKE_WEBHOOK_URL || "";
+  if (makeUrl) {
+    const forwardPayload = {
+      provider: "wayforpay",
+      ok: success && isSignatureValid,
+      signatureValid: isSignatureValid,
+      // ключові поля
+      merchantAccount,
+      orderReference,
+      amount,
+      currency,
+      transactionStatus,
+      reason: s(data.reason),
+      reasonCode,
+      // карткові
+      authCode,
+      cardPan,
+      cardType: s(data.cardType),
+      issuerBankCountry: s(data.issuerBankCountry),
+      issuerBankName: s(data.issuerBankName),
+      // дати
+      createdDate: s(data.createdDate),
+      processingDate: s(data.processingDate),
+      settlementDate: s(data.settlementDate),
+      // клієнт
+      clientFirstName: s(data.clientFirstName),
+      clientLastName: s(data.clientLastName),
+      clientEmail: s(data.email || data.clientEmail),
+      clientPhone: s(data.phone || data.clientPhone),
+      // товари
+      productName: toArray(data.productName),
+      productCount: toArray(data.productCount),
+      productPrice: toArray(data.productPrice),
+      // доставка/мультивалюта
+      deliveryList: s(data.deliveryList),
+      alternativeCurrency: s(data.alternativeCurrency),
+      alternativeAmount: s(data.alternativeAmount),
+      // сирий payload для дебагу
+      raw: data,
+    };
+
+    try {
       await fetch(makeUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(forwardPayload),
       });
-    } else {
-      console.warn("MAKE_WEBHOOK_URL is not set — skipping forward to Make");
+    } catch (e) {
+      console.error("Forward to Make failed:", e);
     }
-  } catch (e) {
-    console.error("Forward to Make failed:", e);
+  } else if (DEBUG) {
+    console.warn("MAKE_WEBHOOK_URL is not set — skipping forward to Make");
   }
 
   // 8) Відповідь WFP
