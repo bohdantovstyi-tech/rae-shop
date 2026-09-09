@@ -1,6 +1,11 @@
 [build]
   publish = "public"
   functions = "netlify/functions"
+  # Збірки в проєкті немає: public/ публікується як є, функції бандлить сам Netlify.
+  # Команда задана явно, бо в UI сайту лишилось "npm run build", а такого скрипта
+  # в package.json немає — авто-деплой з GitHub через це падав. netlify.toml має
+  # пріоритет над налаштуваннями в UI, тож правити щось у Netlify не потрібно.
+  command = "echo 'no build step — public/ is published as is'"
 
 [dev]
   framework = "#static"

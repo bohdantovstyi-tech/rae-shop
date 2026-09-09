@@ -4,7 +4,6 @@ import {
   buildCallbackBaseString,
   buildPurchaseBaseString,
   hmacMd5Hex,
-  resolveWfpSecret,
 } from "./wfp-signature.js";
 
 describe("buildPurchaseBaseString", () => {
@@ -71,21 +70,5 @@ describe("buildAckBaseString", () => {
   it("складає orderReference;status;time", () => {
     expect(buildAckBaseString("RAE_1", "accept", 1700000000))
       .toBe("RAE_1;accept;1700000000");
-  });
-});
-
-describe("resolveWfpSecret", () => {
-  const env = { WFP_SECRET_KEY: "live-key", WFP_TEST_SECRET_KEY: "test-key" };
-
-  it("повертає тестовий ключ при WFP_TEST_MODE=true", () => {
-    expect(resolveWfpSecret({ ...env, WFP_TEST_MODE: "true" })).toBe("test-key");
-  });
-
-  it("повертає live-ключ при WFP_TEST_MODE=false", () => {
-    expect(resolveWfpSecret({ ...env, WFP_TEST_MODE: "false" })).toBe("live-key");
-  });
-
-  it("повертає live-ключ, коли змінної немає взагалі", () => {
-    expect(resolveWfpSecret(env)).toBe("live-key");
   });
 });

@@ -1,8 +1,10 @@
 // Netlify Function: WayForPay Purchase (offline-first — fallback to form POST)
-// Важливо: merchantAccount / merchantDomainName / secret беремо лише з ENV!
+// Важливо: merchantAccount / merchantDomainName / secret приходять лише з бекенду
+// (env або sandbox-дефолти з wfp-config.js), ніколи з клієнтського payload!
 
 import { validateWfpPayload } from "./utils/validate-wfp.js";
-import { buildPurchaseBaseString, hmacMd5Hex, resolveWfpSecret } from "./utils/wfp-signature.js";
+import { buildPurchaseBaseString, hmacMd5Hex } from "./utils/wfp-signature.js";
+import { resolveWfpConfig } from "./utils/wfp-config.js";
 
 export async function handler(event) {
   const allowOrigin = process.env.CORS_ALLOWED_ORIGIN || "*";
@@ -30,11 +32,14 @@ export async function handler(event) {
       };
     }
 
-    // ---- серверні секретовані значення з ENV
-    const MERCHANT_ACCOUNT = process.env.WFP_MERCHANT_ACCOUNT;
-    const MERCHANT_DOMAIN  = process.env.WFP_MERCHANT_DOMAIN;
-    // Той самий перемикач live/test, що й у wfp-callback.js — інакше підписи розійдуться
-    const SECRET = resolveWfpSecret();
+    // ---- серверні значення мерчанта: env, з fallback на sandbox у тестовому режимі.
+    // Той самий wfp-config, що й у wfp-callback.js — інакше підписи розійдуться.
+    const {
+      merchantAccount: MERCHANT_ACCOUNT,
+      merchantDomain: MERCHANT_DOMAIN,
+      secretKey: SECRET,
+      usingSandboxDefaults,
+    } = resolveWfpConfig();
 
     if (!MERCHANT_ACCOUNT || !MERCHANT_DOMAIN || !SECRET) {
       return {
@@ -42,6 +47,12 @@ export async function handler(event) {
         headers: cors,
         body: JSON.stringify({ error: "Missing env vars: WFP_MERCHANT_ACCOUNT / WFP_MERCHANT_DOMAIN / WFP_SECRET_KEY (or WFP_TEST_SECRET_KEY)" })
       };
+    }
+
+    // Гучний слід у логах: якщо це побачити на проді — env-змінні не доїхали
+    // в Netlify, і платежі йдуть через пісочницю замість реального мерчанта.
+    if (usingSandboxDefaults) {
+      console.warn("[checkout] WayForPay sandbox defaults in use — no WFP_SECRET_KEY configured");
     }
 
     // ---- Мінімальна валідація payload (окрім merchant-полів, які ми перезапишемо)

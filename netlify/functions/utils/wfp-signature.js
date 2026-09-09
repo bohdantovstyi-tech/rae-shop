@@ -65,8 +65,6 @@ export function hmacMd5Hex(message, secret) {
   return crypto.createHmac("md5", secret).update(message, "utf8").digest("hex");
 }
 
-// Єдине джерело правди про перемикач режиму: обидві функції (checkout і callback)
-// мають брати секрет саме звідси, інакше підписи розійдуться.
-export function resolveWfpSecret(env = process.env) {
-  return env.WFP_TEST_MODE === "true" ? env.WFP_TEST_SECRET_KEY : env.WFP_SECRET_KEY;
-}
+// resolveWfpSecret переїхав у ./wfp-config.js разом з рештою логіки вибору
+// мерчанта й режиму. Ре-експорт лишено, щоб не було двох різних шляхів імпорту.
+export { resolveWfpSecret } from "./wfp-config.js";

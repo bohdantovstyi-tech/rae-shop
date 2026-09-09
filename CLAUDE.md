@@ -64,10 +64,12 @@ rae-shop-codebase/
 │       ├── wfp-callback.js   # serviceUrl webhook: перевірка підпису, ACK, Brevo-лист
 │       └── utils/
 │           ├── validate-wfp.js       # валідація payload перед підписом
-│           ├── wfp-signature.js      # базові рядки WFP + HMAC + перемикач секрету
+│           ├── wfp-signature.js      # базові рядки WFP + HMAC
+│           ├── wfp-config.js         # мерчант/секрет/режим + sandbox-дефолти
 │           ├── brevo.js              # Brevo Transactional Email API клієнт
 │           ├── validate-wfp.test.js
 │           ├── wfp-signature.test.js
+│           ├── wfp-config.test.js
 │           └── brevo.test.js
 └── test/
     └── local-preview.html    # HTML-харнес для локального тестування без Webflow
@@ -95,9 +97,15 @@ rae-shop-codebase/
   повертає `Access-Control-Allow-Origin` з `CORS_ALLOWED_ORIGIN` (порожньо = `*`)
 - `netlify/functions/` **комітиться в git** (на відміну від `.netlify/`) — саме так
   GitHub → Netlify інтеграція деплоїть функції при push
-- `WFP_TEST_MODE` синхронізує секрет між `checkout.js` і `wfp-callback.js`: обидві функції
-  беруть його через єдину `resolveWfpSecret()` з `utils/wfp-signature.js`. Якщо ці дві
-  функції розійдуться за прапорцем — підпис на checkout і перевірка на callback не зійдуться
+- Мерчант, секрет і режим live/test — лише через `utils/wfp-config.js`. Обидві функції
+  (`checkout.js` і `wfp-callback.js`) беруть їх звідти; якщо вони розійдуться за режимом
+  чи секретом — підпис на checkout і перевірка на callback не зійдуться
+- Креденшли пісочниці WFP (`test_merch_n1` / `www.market.ua` / тестовий ключ) **зашиті
+  в `wfp-config.js` і закомічені навмисно** — це публічні значення з доки WFP. Завдяки
+  їм тестове середовище працює без жодної env-змінної. Реальні клієнтські токени
+  (WFP live + Brevo) задаються **тільки** в Netlify UI і перебивають дефолти.
+  Режим визначається так: `WFP_TEST_MODE=true` → пісочниця, `=false` → live,
+  змінної немає → live за наявності `WFP_SECRET_KEY`, інакше пісочниця
 - `serviceUrl` і `returnUrl` підставляє **бекенд** з env (`WFP_SERVICE_URL`, `WFP_RETURN_URL`),
   а не клієнт: env має пріоритет, щоб клієнт не міг перенаправити callback на свій сервер.
   Ці поля **не входять** у рядок підпису WFP Purchase
@@ -140,7 +148,18 @@ npm run dev
 ## Деплой
 
 Push у `main` на GitHub → Netlify деплоїть і статику (`public/`), і функції
-(`netlify/functions/`). Build-команди немає. Ручний деплой не потрібен.
+(`netlify/functions/`). Ручний деплой не потрібен.
+
+Збірки немає, але `command` у `netlify.toml` заданий явно (`echo ...`): у налаштуваннях
+сайту в Netlify UI лишилась команда `npm run build`, а такого скрипта в `package.json`
+немає, через що деплой падав. `netlify.toml` має пріоритет над UI, тож правити щось
+у Netlify не треба — **не видаляти `command` з `netlify.toml`**.
+
+Тестовий деплой без чіпання проду:
+`netlify deploy --no-build --dir public --functions netlify/functions` — дає окремий
+draft-URL. Зараз такі деплої закриті Netlify-авторизацією (`sso_login_context:
+non_production`), тож із Webflow вони не підвантажаться, поки захист не вимкнути
+в Site configuration → Access & security.
 
 **Перед публікацією на прод з реальними клієнтськими токенами WFP** — пройтись за
 чеклістом [`PROD_CHECKLIST.md`](./PROD_CHECKLIST.md).
